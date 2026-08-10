@@ -1,0 +1,17 @@
+database:
+  path: "data/meteo.db"
+
+data:
+  input_directory: "data/input"
+
+reports:
+  output_directory: "reports"
+
+quality_control:
+  temperature:
+    min: -30
+    max: 55
+
+  relative_humidity:
+    min: 0
+    max: 100

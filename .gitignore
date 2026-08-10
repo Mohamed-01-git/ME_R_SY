@@ -216,3 +216,27 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+#Data
+
+data/*
+!data/.gitkeep
+
+#Database
+*.db
+*.sqlite3
+*.sqlite
+
+#Reports
+reports/*
+!reports/.gitkeep
+
+# Environnement / secrets
+.env
+*.secret
+
+# IDE
+*.vscode/
+.idea/
+
+

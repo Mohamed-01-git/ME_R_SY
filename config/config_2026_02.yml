@@ -1,0 +1,38 @@
+database:
+  path: "/home/muhammed/METEO-REPORTING-SYSTEM/ME_R_SY/data/meteo.db"
+
+data:
+  input:      "/home/muhammed/METEO-REPORTING-SYSTEM/ME_R_SY/data/input"
+  output:     "/home/muhammed/METEO-REPORTING-SYSTEM/ME_R_SY/data/output"
+  shapefile:  "/home/muhammed/METEO-REPORTING-SYSTEM/ME_R_SY/data/regions/regions.shp"
+
+date:
+  year: 2026
+  month: 02
+
+era5:
+  vars:
+       - "10m_u_component_of_wind"
+       - "10m_v_component_of_wind"
+       - "2m_temperature"
+       - "mean_sea_level_pressure" 
+       - "total_precipitation" 
+  area:
+       - 37
+       - -18
+       - 20
+       - 0
+
+
+
+reports:
+  output: "/home/muhammed/METEO-REPORTING-SYSTEM/ME_R_SY/reports"
+
+quality_control:
+  temperature:
+    min: -30
+    max: 55
+
+  relative_humidity:
+    min: 0
+    max: 100

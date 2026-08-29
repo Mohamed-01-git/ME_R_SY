@@ -1,99 +1,118 @@
 import json
-
 import torch
 from transformers import AutoTokenizer, AutoModelForCausalLM
 
 
-MODEL_NAME = "Qwen/Qwen3-4B-Instruct-2507"
+class LLM:
+
+    def __init__(self, daily_stats, anomaly, year, month):
+        self.daily_stats = daily_stats
+        self.anomaly = anomaly
+        self.year = year
+        self.month = month
+
+    def create_items(self, var):
+        out = {
+            "maximum": {
+                "value": float(self.daily_stats["max"][var]["values"].max().values),
+                "day": str(self.daily_stats["max"][var]["day"].values),
+                "latitude": float(self.daily_stats["max"][var]["lat"].item()),
+                "longitude": float(self.daily_stats["max"][var]["lon"].item()),
+            },
+            "minimum": {
+                "value": float(self.daily_stats["min"][var]["values"].min().values),
+                "day": str(self.daily_stats["min"][var]["day"].values),
+                "latitude": float(self.daily_stats["min"][var]["lat"].item()),
+                "longitude": float(self.daily_stats["min"][var]["lon"].item()),
+            },
+            "anomaly": float(self.anomaly[var].mean().values),
+        }
+
+        return out
+
+    def create_message(self):
+
+        message = {
+            "studied_period": {"year": int(self.year), "month": int(self.month)},
+            "reference_period": {"start_year": 1991, "end_year": 2020},
+            "temperature": self.create_items("t2m"),
+            "pressure": self.create_items("msl"),
+            "wind": self.create_items("w"),
+            "precipitations": {
+                "maximum": {
+                    "value": float(
+                        self.daily_stats["max"]["tp"]["values"].min().values
+                    ),
+                    "day": str(self.daily_stats["max"]["tp"]["day"].values),
+                    "latitude": float(self.daily_stats["max"]["tp"]["lat"].item()),
+                    "longitude": float(self.daily_stats["max"]["tp"]["lon"].item()),
+                },
+                "anomaly": float(self.anomaly["tp"].mean().values),
+            },
+        }
+        return message
+
+    def to_json(self):
+        message = self.create_message()
+        json_msg = json.dumps(message, indent=4, ensure_ascii=False)
+        return json_msg
 
 
-class MeteorologicalReportGenerator:
+class ReportGenerator:
 
-    def __init__(self):
-        print(f"Loading model: {MODEL_NAME}")
+    def __init__(self, model_name):
 
-        self.tokenizer = AutoTokenizer.from_pretrained(
-            MODEL_NAME
-        )
+        self.tokenizer = AutoTokenizer.from_pretrained(model_name)
 
         self.model = AutoModelForCausalLM.from_pretrained(
-            MODEL_NAME,
-            torch_dtype="auto",
-            device_map="auto",
+            model_name, torch_dtype="auto", device_map="auto"
         )
 
-        self.model.eval()
-
-    def generate(self, data: dict) -> str:
-
-        json_data = json.dumps(
-            data,
-            ensure_ascii=False,
-            indent=2
-        )
+    def generate(self, message):
 
         prompt = f"""
-You are a professional meteorologist working for a meteorological service.
+Tu es un météorologue expert spécialisé dans l'analyse
+climatique et météorologique du Maroc.
 
-Your task is to transform verified meteorological statistics into a
-scientifically accurate monthly meteorological report.
+À partir des données météorologiques JSON ci-dessous,
+rédige un rapport météorologique mensuel professionnel
+en français.
 
-IMPORTANT RULES:
+Le rapport doit :
 
-1. Do not invent numerical values.
-2. Use only the information provided in the JSON.
-3. Do not perform calculations unless absolutely necessary.
-4. Clearly distinguish observations from interpretations.
-5. Use professional meteorological terminology.
-6. Write the report in French.
-7. Produce a clear and concise report.
-8. If information is missing, do not invent it.
+1. Présenter une synthèse générale du mois.
+2. Décrire les températures et leurs anomalies.
+3. Décrire les précipitations et les événements pluvieux remarquables.
+4. Décrire les conditions de pression atmosphérique.
+5. Décrire les conditions de vent.
+6. Mentionner les valeurs extrêmes lorsqu'elles sont pertinentes.
+7. Comparer les conditions du mois à la période de référence 1991-2020.
+8. Ne jamais inventer une information absente du JSON.
+9. Utiliser uniquement les données fournies.
+10. vous aves les lon, lat, determiner la zone géographique au maroc.
+10. Employer un style professionnel adapté à un bulletin météorologique.
 
-Meteorological data:
+Données météorologiques :
 
-{json_data}
+{message}
 
-Write the meteorological report now.
+Rédige uniquement le rapport météorologique final.
 """
 
-        messages = [
-            {
-                "role": "system",
-                "content": (
-                    "You are an expert meteorologist and scientific "
-                    "report writer."
-                ),
-            },
-            {
-                "role": "user",
-                "content": prompt,
-            },
-        ]
-
-        text = self.tokenizer.apply_chat_template(
-            messages,
-            tokenize=False,
-            add_generation_prompt=True,
-        )
-
-        inputs = self.tokenizer(
-            text,
-            return_tensors="pt"
-        ).to(self.model.device)
+        inputs = self.tokenizer(prompt, return_tensors="pt").to(self.model.device)
 
         with torch.no_grad():
+
             outputs = self.model.generate(
                 **inputs,
                 max_new_tokens=1500,
-                temperature=0.3,
                 do_sample=True,
+                temperature=0.3,
+                top_p=0.9,
             )
 
-        generated_tokens = outputs[0][inputs["input_ids"].shape[1]:]
+        generated_tokens = outputs[0][inputs["input_ids"].shape[-1] :]
 
-        report = self.tokenizer.decode(
-            generated_tokens,
-            skip_special_tokens=True
-        )
+        report = self.tokenizer.decode(generated_tokens, skip_special_tokens=True)
 
         return report

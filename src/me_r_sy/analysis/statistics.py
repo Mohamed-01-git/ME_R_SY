@@ -72,11 +72,3 @@ class Statistics:
             anomaly[var].attrs["GRIB_STAT"] = "ANOMALY"
 
         return anomaly
-
-
-# for var in ["t2m", "u10", "v10", "msl", "tp", "w"]:
-# anomaly[var].attrs["GRIB_STAT"] = "ANOMALY"
-# statistics["mean"][var].attrs["GRIB_STAT"] = "AVERAGE"
-# statistics["max"][var].attrs["GRIB_STAT"] = "MAXIMUM"
-# statistics["min"][var].attrs["GRIB_STAT"] = "MINIMUM"
-# ref_variables[var].attrs["GRIB_STAT"] = "CLIMATOLOGY"

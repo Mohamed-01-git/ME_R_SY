@@ -3,7 +3,7 @@ database:
 
 data:
   input:      "/home/muhammed/METEO-REPORTING-SYSTEM/ME_R_SY/data/input"
-  output:     "/home/muhammed/METEO-REPORTING-SYSTEM/ME_R_SY/data/output"
+  output:     "/home/muhammed/METEO-REPORTING-SYSTEM/ME_R_SY/report"
   shapefile:  "/home/muhammed/METEO-REPORTING-SYSTEM/ME_R_SY/data/regions/regions.shp"
 
 date:

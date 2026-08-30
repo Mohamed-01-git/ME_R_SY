@@ -40,13 +40,15 @@ class Statistics:
             "min": {
                 name: self.get_stat(var, np.min, "ME")
                 for name, var in variables.items()
+                if name != "tp"
             },
             "accum": {"tp": variables["tp"].sum(dim="time")},
         }
         for var in ["t2m", "u10", "v10", "msl", "tp", "w"]:
             statistics["mean"][var].attrs["GRIB_STAT"] = "AVERAGE"
             statistics["max"][var].attrs["GRIB_STAT"] = "MAXIMUM"
-            statistics["min"][var].attrs["GRIB_STAT"] = "MINIMUM"
+            if var != "tp":
+                statistics["min"][var].attrs["GRIB_STAT"] = "MINIMUM"
 
         return statistics
 
@@ -54,7 +56,9 @@ class Statistics:
 
         daily_stats = {
             "min": {
-                name: self.get_stat_day(var, np.min) for name, var in variables.items()
+                name: self.get_stat_day(var, np.min)
+                for name, var in variables.items()
+                if name != "tp"
             },
             "max": {
                 name: self.get_stat_day(var, np.max) for name, var in variables.items()

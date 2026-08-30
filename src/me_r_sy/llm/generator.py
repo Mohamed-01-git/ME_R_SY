@@ -1,6 +1,7 @@
 import json
 import torch
 from transformers import AutoTokenizer, AutoModelForCausalLM
+import numpy as np
 
 
 class LLM:
@@ -11,108 +12,236 @@ class LLM:
         self.year = year
         self.month = month
 
-    def create_items(self, var):
-        out = {
-            "maximum": {
-                "value": float(self.daily_stats["max"][var]["values"].max().values),
-                "day": str(self.daily_stats["max"][var]["day"].values),
-                "latitude": float(self.daily_stats["max"][var]["lat"].item()),
-                "longitude": float(self.daily_stats["max"][var]["lon"].item()),
-            },
-            "minimum": {
-                "value": float(self.daily_stats["min"][var]["values"].min().values),
-                "day": str(self.daily_stats["min"][var]["day"].values),
-                "latitude": float(self.daily_stats["min"][var]["lat"].item()),
-                "longitude": float(self.daily_stats["min"][var]["lon"].item()),
-            },
-            "anomaly": float(self.anomaly[var].mean().values),
-        }
-
+    def create_items(self, ds, stat):
+        out = {}
+        for var in ds:
+            out[var] = {
+                "lon": float(ds[var]["lon"].item()),
+                "lat": float(ds[var]["lat"].item()),
+                "values": float(ds[var]["values"].reduce(stat).values),
+                "day": str(ds[var]["day"].values),
+            }
         return out
 
     def create_message(self):
-
         message = {
             "studied_period": {"year": int(self.year), "month": int(self.month)},
             "reference_period": {"start_year": 1991, "end_year": 2020},
-            "temperature": self.create_items("t2m"),
-            "pressure": self.create_items("msl"),
-            "wind": self.create_items("w"),
-            "precipitations": {
-                "maximum": {
-                    "value": float(
-                        self.daily_stats["max"]["tp"]["values"].min().values
-                    ),
-                    "day": str(self.daily_stats["max"]["tp"]["day"].values),
-                    "latitude": float(self.daily_stats["max"]["tp"]["lat"].item()),
-                    "longitude": float(self.daily_stats["max"]["tp"]["lon"].item()),
-                },
-                "anomaly": float(self.anomaly["tp"].mean().values),
+            # "monthly": self.create_items(self.statistics["mean"], np.max),
+            "max": self.create_items(self.daily_stats["max"], np.max),
+            "min": self.create_items(self.daily_stats["min"], np.min),
+            "anomaly": {
+                name: float(var.values.mean()) for name, var in self.anomaly.items()
             },
         }
-        return message
+        return json.dumps(message, indent=4, ensure_ascii=False)
 
-    def to_json(self):
-        message = self.create_message()
-        json_msg = json.dumps(message, indent=4, ensure_ascii=False)
-        return json_msg
+
+import json
+import requests
 
 
 class ReportGenerator:
 
-    def __init__(self, model_name):
+    def __init__(
+        self,
+        url="http://127.0.0.1:8081/v1/chat/completions",
+        model="lmstudio-community/Qwen3-4B-Instruct-2507-GGUF:Q4_K_M",
+    ):
+        self.url = url
+        self.model = model
 
-        self.tokenizer = AutoTokenizer.from_pretrained(model_name)
+    def _generate(self, prompt, max_tokens=150):
 
-        self.model = AutoModelForCausalLM.from_pretrained(
-            model_name, torch_dtype="auto", device_map="auto"
+        response = requests.post(
+            self.url,
+            json={
+                "model": self.model,
+                "messages": [
+                    {
+                        "role": "system",
+                        "content": (
+                            "Tu es un météorologue expert "
+                            "spécialisé dans l'analyse "
+                            "météorologique du Maroc."
+                        ),
+                    },
+                    {
+                        "role": "user",
+                        "content": prompt,
+                    },
+                ],
+                "temperature": 0.2,
+                "max_tokens": max_tokens,
+            },
+            timeout=300,
         )
 
-    def generate(self, message):
+        response.raise_for_status()
+
+        data = response.json()
+
+        return data["choices"][0]["message"]["content"].strip()
+
+    # ---------------------------------------------------------
+    # Temperature
+    # ---------------------------------------------------------
+
+    def generate_max(self, data):
 
         prompt = f"""
-Tu es un météorologue expert spécialisé dans l'analyse
-climatique et météorologique du Maroc.
-
-À partir des données météorologiques JSON ci-dessous,
-rédige un rapport météorologique mensuel professionnel
-en français.
-
-Le rapport doit :
-
-1. Présenter une synthèse générale du mois.
-2. Décrire les températures et leurs anomalies.
-3. Décrire les précipitations et les événements pluvieux remarquables.
-4. Décrire les conditions de pression atmosphérique.
-5. Décrire les conditions de vent.
-6. Mentionner les valeurs extrêmes lorsqu'elles sont pertinentes.
-7. Comparer les conditions du mois à la période de référence 1991-2020.
-8. Ne jamais inventer une information absente du JSON.
-9. Utiliser uniquement les données fournies.
-10. vous aves les lon, lat, determiner la zone géographique au maroc.
-10. Employer un style professionnel adapté à un bulletin météorologique.
+Rédige uniquement le commentaire de la section
+"MAXIMUMS" d'un rapport météorologique mensuel.
 
 Données météorologiques :
 
-{message}
+{json.dumps(data, ensure_ascii=False, indent=2)}
 
-Rédige uniquement le rapport météorologique final.
+Le commentaire doit :
+
+- présenter les maximums des différentes variables météorologiques ;
+- mentionner les dates et localisations disponibles ;
+- interpréter correctement les maximums ;
+- rester factuel ;
+- ne rien inventer.
+
+N'inclus aucun titre.
+Ne mentionne pas le JSON, les instructions ou le prompt.
+
+Rédige uniquement le commentaire météorologique.
 """
 
-        inputs = self.tokenizer(prompt, return_tensors="pt").to(self.model.device)
+        return self._generate(prompt, max_tokens=150)
 
-        with torch.no_grad():
+    # ---------------------------------------------------------
+    # MINIMUMS
+    # ---------------------------------------------------------
+    def generate_min(self, data):
 
-            outputs = self.model.generate(
-                **inputs,
-                max_new_tokens=1500,
-                do_sample=True,
-                temperature=0.3,
-                top_p=0.9,
-            )
+        prompt = f"""
+Rédige uniquement le commentaire de la section
+"MINIMUMS" d'un rapport météorologique mensuel.
 
-        generated_tokens = outputs[0][inputs["input_ids"].shape[-1] :]
+Données météorologiques :
 
-        report = self.tokenizer.decode(generated_tokens, skip_special_tokens=True)
+{json.dumps(data, ensure_ascii=False, indent=2)}
 
-        return report
+Le commentaire doit :
+
+- présenter les minimums des différentes variables météorologiques ;
+- mentionner les dates et localisations disponibles ;
+- interpréter correctement les minimums ;
+- rester factuel ;
+- ne rien inventer.
+
+N'inclus aucun titre.
+Ne mentionne pas le JSON, les instructions ou le prompt.
+
+Rédige uniquement le commentaire météorologique.
+"""
+
+        return self._generate(prompt, max_tokens=150)
+
+    def generate_anomaly(self, data):
+
+        prompt = f"""
+Rédige uniquement le commentaire de la section
+"Anomalie" d'un rapport météorologique mensuel.
+
+Données météorologiques :
+
+{json.dumps(data, ensure_ascii=False, indent=2)}
+
+Le commentaire doit :
+- analyser l'anomalie par rapport à 1991-2020 ;
+- mentionner les dates et localisations disponibles ;
+- ne pas tirer de conclusion non justifiée par les données ;
+- rester factuel ;
+- ne rien inventer.
+
+N'inclus aucun titre.
+Ne mentionne pas le JSON, les instructions ou le prompt.
+
+Rédige uniquement le commentaire météorologique.
+"""
+
+        return self._generate(prompt, max_tokens=150)
+
+    # ---------------------------------------------------------
+    # Pressure
+    # ---------------------------------------------------------
+
+    def generate_monthly(self, data):
+
+        prompt = f"""
+Rédige uniquement le commentaire de la section
+"moyenne mensuelle" d'un rapport météorologique mensuel.
+
+Données météorologiques :
+
+{json.dumps(data, ensure_ascii=False, indent=2)}
+
+Le commentaire doit :
+
+- présenter les valeurs des differentes variables disponibles ;
+- mentionner les dates et localisations disponibles ;
+- rester factuel ;
+- ne rien inventer.
+
+N'inclus aucun titre.
+Ne mentionne pas le JSON, les instructions ou le prompt.
+
+Rédige uniquement le commentaire météorologique.
+"""
+
+        return self._generate(prompt, max_tokens=120)
+
+    # ---------------------------------------------------------
+    # General summary
+    # ---------------------------------------------------------
+
+    def generate_summary(self, sections):
+
+        prompt = f"""
+Rédige une synthèse générale courte pour un rapport
+météorologique mensuel sur le Maroc.
+
+Commentaires des différentes sections :
+
+{json.dumps(sections, ensure_ascii=False, indent=2)}
+
+La synthèse doit :
+
+- présenter les principaux faits météorologiques du mois ;
+- mettre en évidence les anomalies importantes ;
+- éviter de répéter inutilement toutes les valeurs ;
+- rester cohérente avec les sections ;
+- ne rien inventer.
+
+N'inclus aucun titre.
+Ne mentionne pas le JSON, les instructions ou le prompt.
+
+Rédige uniquement la synthèse météorologique.
+"""
+
+        return self._generate(prompt, max_tokens=180)
+
+    # ---------------------------------------------------------
+    # Complete report
+    # ---------------------------------------------------------
+
+    def generate_report(self, message):
+
+        sections = {}
+
+        sections["anomaly"] = self.generate_anomaly(message)
+
+        sections["monthly"] = self.generate_monthly(message)
+
+        sections["max"] = self.generate_max(message)
+
+        sections["min"] = self.generate_min(message)
+
+        sections["summary"] = self.generate_summary(sections)
+
+        return sections

@@ -1,11 +1,14 @@
 from me_r_sy.ingestion.grib import get_grib, get_var, get_ref_var
 from me_r_sy.visualization.plots import Plotter
 from me_r_sy.analysis.statistics import Statistics
+from me_r_sy.llm.generator import LLM, ReportGenerator
 import geopandas as gpd
 import yaml
 import calendar
 import argparse
 import os
+import subprocess
+from pathlib import Path
 
 # =========A- GET THE PARAMETERS READY FOR THE SYSTEM===========================================================================================================
 
@@ -31,7 +34,7 @@ out_dir = config["data"]["output"]
 shp_path = config["data"]["shapefile"]
 year = config["date"]["year"]
 month = config["date"]["month"]
-output_dir = f"{out_dir}/report_{year}_{month}"
+output_dir = f"{out_dir}/report_{year}_{month:02d}/figures"
 os.makedirs(output_dir, exist_ok=True)
 
 
@@ -63,7 +66,7 @@ statistics = Statistics.calculate_statistics(variables=variables)
 daily_stats = Statistics.calculate_daily(variables)
 anomaly = Statistics.calculate_anomaly(statistics, ref_variables)
 
-# ======== C - VIZUALISATION ==============================================================================
+# ======== C - VIZUALISATION ===========================================================
 
 
 ## 1 MONTHLY AVERAGE
@@ -81,3 +84,36 @@ Plotter.plot_max_days(daily_stats, "min", year, month, output_dir)
 ## 4 ANOMALY
 
 Plotter.plot_anomaly(anomaly, year, month, output_dir)
+
+
+# ========== D - GENERATE THE REPORT ==================================================
+
+llm = LLM(daily_stats, anomaly, year, month)
+rep_gen = ReportGenerator()
+message = llm.create_message()
+report = rep_gen.generate_report(message, year, month)
+
+# Report directory
+report_dir = Path(out_dir) / f"report_{year}_{month:02d}"
+report_dir.mkdir(parents=True, exist_ok=True)
+
+# Save the LaTeX string as .tex
+tex_file = report_dir / f"report_{year}_{month:02d}.tex"
+
+tex_file.write_text(report, encoding="utf-8")
+
+# Compile LaTeX
+subprocess.run(
+    [
+        "pdflatex",
+        "-interaction=nonstopmode",
+        "-halt-on-error",
+        tex_file.name,
+    ],
+    cwd=report_dir,
+    check=True,
+)
+
+
+with open(f"{out_dir}/report_{year}_{month:02d}/report.tex", "w") as f:
+    f.write(report)

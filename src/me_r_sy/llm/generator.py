@@ -37,51 +37,41 @@ class LLM:
         return json.dumps(message, indent=4, ensure_ascii=False)
 
 
-import json
 import requests
+import json
+from google import genai
 
 
 class ReportGenerator:
 
-    def __init__(
-        self,
-        url="http://127.0.0.1:8081/v1/chat/completions",
-        model="lmstudio-community/Qwen3-4B-Instruct-2507-GGUF:Q4_K_M",
-    ):
-        self.url = url
+    def __init__(self, model="gemini-3.5-flash-lite"):
+        self.client = genai.Client()
         self.model = model
 
     def _generate(self, prompt, max_tokens=150):
 
-        response = requests.post(
-            self.url,
-            json={
-                "model": self.model,
-                "messages": [
-                    {
-                        "role": "system",
-                        "content": (
-                            "Tu es un météorologue expert "
-                            "spécialisé dans l'analyse "
-                            "météorologique du Maroc."
-                        ),
-                    },
-                    {
-                        "role": "user",
-                        "content": prompt,
-                    },
-                ],
+        response = self.client.models.generate_content(
+            model=self.model,
+            contents=prompt,
+            config={
+                "system_instruction": (
+                    "Tu es un météorologue expert spécialisé "
+                    "dans l'analyse météorologique du Maroc. "
+                    "Tu produis des commentaires météorologiques "
+                    "factuels, précis et professionnels en français. "
+                    "Tu ne dois jamais inventer de données."
+                ),
                 "temperature": 0.2,
-                "max_tokens": max_tokens,
+                "max_output_tokens": max_tokens,
             },
-            timeout=300,
         )
+        print("RESPONSE \n")
+        print(response)
 
-        response.raise_for_status()
+        print("RESPONSE TXT \n")
+        print(response.text)
 
-        data = response.json()
-
-        return data["choices"][0]["message"]["content"].strip()
+        return response.text.strip()
 
     # ---------------------------------------------------------
     # Temperature
@@ -230,18 +220,175 @@ Rédige uniquement la synthèse météorologique.
     # Complete report
     # ---------------------------------------------------------
 
-    def generate_report(self, message):
+    def generate_report(self, message, year, month):
 
-        sections = {}
+        report = rf"""
+\documentclass[a4paper,12pt]{{article}}
 
-        sections["anomaly"] = self.generate_anomaly(message)
+\usepackage[utf8]{{inputenc}}
+\usepackage[T1]{{fontenc}}
+\usepackage{{graphicx}}
+\usepackage{{float}}
+\usepackage{{geometry}}
 
-        sections["monthly"] = self.generate_monthly(message)
+\geometry{{margin=2.5cm}}
 
-        sections["max"] = self.generate_max(message)
+\begin{{document}}
 
-        sections["min"] = self.generate_min(message)
+% =========================================================
+% TITLE PAGE
+% =========================================================
 
-        sections["summary"] = self.generate_summary(sections)
+\begin{{titlepage}}
 
-        return sections
+\newgeometry{{top=1.5cm,bottom=1.5cm,left=2cm,right=2cm}}
+
+\begin{{center}}
+
+\vspace*{{0.5cm}}
+
+{{\Large\textbf{{ME-R-SY}}}}
+
+\vspace{{0.1cm}}
+
+{{\small\textit{{Meteorological Reporting System}}}}
+
+\vspace{{0.8cm}}
+
+\noindent\rule{{0.85\textwidth}}{{1.2pt}}
+
+\vspace{{1.0cm}}
+
+{{\Huge\textbf{{Rapport météorologique mensuel}}}}
+
+\vspace{{0.3cm}}
+
+{{\Large
+Analyse des conditions météorologiques\\
+et des anomalies climatiques
+}}
+
+\vspace{{0.8cm}}
+
+% =========================================================
+% MAIN FIGURE
+% =========================================================
+
+\includegraphics[
+    width=0.82\textwidth,
+    height=7cm,
+    keepaspectratio
+]{{figures/mean\_{year}\_{month:02d}.png}}
+
+\vspace{{0.3cm}}
+
+{{\small\textit{{Distribution spatiale des conditions météorologiques
+au Maroc}}}}
+
+\vspace{{0.8cm}}
+
+% =========================================================
+% PERIOD
+% =========================================================
+
+\fbox{{%
+\begin{{minipage}}{{0.55\textwidth}}
+\centering
+\vspace{{0.25cm}}
+
+{{\large\textbf{{Période étudiée}}}}
+
+\vspace{{0.1cm}}
+
+{{\LARGE\textbf{{{month:02d} / {year}}}}}
+
+\vspace{{0.15cm}}
+
+{{\small Référence climatique : 1991--2020}}
+
+\vspace{{0.25cm}}
+\end{{minipage}}
+}}
+
+\vfill
+
+% =========================================================
+% DESCRIPTION
+% =========================================================
+
+\begin{{minipage}}{{0.80\textwidth}}
+\centering
+\small
+Rapport généré automatiquement à partir des données
+météorologiques et des analyses statistiques du système ME-R-SY.
+\end{{minipage}}
+
+\vspace{{0.8cm}}
+
+\noindent\rule{{0.85\textwidth}}{{0.6pt}}
+
+\vspace{{0.25cm}}
+
+{{\small
+\textbf{{ME-R-SY}}
+\quad | \quad
+Meteorological Data Analysis
+\quad | \quad
+Automated Reporting
+}}
+
+\end{{center}}
+
+\restoregeometry
+
+\end{{titlepage}}
+
+
+\section{{Synthèse générale}}
+
+{self.generate_anomaly(message)}
+
+\begin{{figure}}[H]
+    \centering
+    \includegraphics[width=\textwidth]{{figures/mean_{year}_{month:02d}.png}}
+    \caption{{Moyennes météorologiques}}
+\end{{figure}}
+
+\section{{Conditions mensuelles}}
+
+{self.generate_monthly(message)}
+
+\section{{Maximums}}
+
+{self.generate_max(message)}
+
+\begin{{figure}}[H]
+    \centering
+    \includegraphics[width=\textwidth]{{figures/max_{year}_{month:02d}.png}}
+    \caption{{Valeurs maximales}}
+\end{{figure}}
+
+\section{{Minimums}}
+
+{self.generate_min(message)}
+
+\begin{{figure}}[H]
+    \centering
+    \includegraphics[width=\textwidth]{{figures/min_{year}_{month:02d}.png}}
+    \caption{{Valeurs minimales}}
+\end{{figure}}
+
+\section{{Anomalies}}
+
+{self.generate_anomaly(message)}
+
+\begin{{figure}}[H]
+    \centering
+    \includegraphics[width=\textwidth]{{figures/anom_{year}_{month:02d}.png}}
+    \caption{{Anomalies météorologiques}}
+\end{{figure}}
+
+\end{{document}}
+"""
+
+        return report

@@ -82,7 +82,7 @@ class Plotter:
             f"THE MONTHLY AVERAGE DATA OVER MOROCCO : {year} - {calendar.month_name[month].upper()}"
         )
 
-        plt.savefig(f"{output_dir}/mean_{year}_{month}.png")
+        plt.savefig(f"{output_dir}/mean_{year}_{month:02d}.png")
 
     # The refreence period (1991-2020)
 
@@ -105,7 +105,7 @@ class Plotter:
         plt.suptitle(
             f"ANOMALY OVER MOROCCO FOR {year} - {calendar.month_name[month]} \n reference period (1991-2020)"
         )
-        plt.savefig(f"{output_dir}/anom_{year}_{month}.png")
+        plt.savefig(f"{output_dir}/anom_{year}_{month:02d}.png")
 
     # max days vizualisation
 
@@ -120,7 +120,12 @@ class Plotter:
         ax[0].set_title(
             f"{stat.upper()} : {in_dict['w'].attrs['long_name'].upper()} \n {daily_stats[stat]['w']['values']['time'].dt.strftime('%Y-%d-%d').values}"
         )
-        for i, varname in enumerate(["t2m", "msl", "tp"]):
+        vars = ["t2m", "msl", "tp"]
+        if stat == "min":
+            vars = ["t2m", "msl"]
+            ax[3].remove()
+
+        for i, varname in enumerate(vars):
             var = daily_stats[stat][varname]["values"]
             self.plot_it(fig, ax[i + 1], var)
             ax[i + 1].set_title(
@@ -129,7 +134,7 @@ class Plotter:
         plt.suptitle(
             f"{stat.upper()}IMUM OVER MOROCCO FOR {year} / {calendar.month_name[month]} \n reference period (1991-2020)"
         )
-        plt.savefig(f"{output_dir}/{stat}_{year}_{month}.png")
+        plt.savefig(f"{output_dir}/{stat}_{year}_{month:02d}.png")
 
 
 # # min days vizualisation

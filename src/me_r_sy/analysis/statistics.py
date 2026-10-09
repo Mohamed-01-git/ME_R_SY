@@ -15,16 +15,50 @@ class Statistics:
     def ref_avg(ds, month):
         return ds.groupby("time.month").mean().sel(month=month)
 
+    # @staticmethod
+    # def get_stat_day(var, stat):
+    #     dims = [x for x in var.dims if (x != "time")]
+    #     day = var.reduce(stat, dims).idxmax("time")
+    #     out = var.sel(time=day)
+    #     out.attrs["GRIB_STAT"] = stat.__name__.upper()
+    #     lon = out.where(out == out.reduce(stat), drop=True)["longitude"].values
+    #     lat = out.where(out == out.reduce(stat), drop=True)["latitude"].values
+    #     dict_out = {"lon": lon, "lat": lat, "day": day, "values": out}
+    #     return dict_out
+
     @staticmethod
     def get_stat_day(var, stat):
-        dims = [x for x in var.dims if (x != "time")]
-        day = var.reduce(stat, dims).idxmax("time")
+        dims = [dim for dim in var.dims if dim != "time"]
+
+        # Find the time of the overall spatial maximum or minimum.
+        spatial_extreme = var.reduce(stat, dim=dims)
+
+        if stat is np.max:
+            day = spatial_extreme.idxmax("time")
+        elif stat is np.min:
+            day = spatial_extreme.idxmin("time")
+        else:
+            raise ValueError("stat must be np.max or np.min")
+
+        # Select the spatial grid for that day.
         out = var.sel(time=day)
+
+        # Find one actual grid point containing the extreme.
+        values = out.values
+        flat_idx = np.nanargmax(values) if stat is np.max else np.nanargmin(values)
+        lat_idx, lon_idx = np.unravel_index(flat_idx, values.shape)
+
+        lon = float(out["longitude"].values[lon_idx])
+        lat = float(out["latitude"].values[lat_idx])
+
         out.attrs["GRIB_STAT"] = stat.__name__.upper()
-        lon = out.where(out == out.reduce(stat), drop=True)["longitude"].values
-        lat = out.where(out == out.reduce(stat), drop=True)["latitude"].values
-        dict_out = {"lon": lon, "lat": lat, "day": day, "values": out}
-        return dict_out
+
+        return {
+            "lon": lon,
+            "lat": lat,
+            "day": day,
+            "values": out,
+        }
 
     def calculate_statistics(self, variables):
 

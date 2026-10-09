@@ -15,9 +15,18 @@ class LLM:
     def create_items(self, ds, stat):
         out = {}
         for var in ds:
+            print(f"\nVariable: {var}")
+
+            for name in ["lon", "lat", "values", "day"]:
+                if name in ds[var]:
+                    arr = ds[var][name]
+                    print(
+                        f"{name}: type={type(arr).__name__}, "
+                        f"shape={getattr(arr, 'shape', None)}"
+                    )
             out[var] = {
-                "lon": float(ds[var]["lon"].item()),
-                "lat": float(ds[var]["lat"].item()),
+                "lon": float(ds[var]["lon"]),
+                "lat": float(ds[var]["lat"]),
                 "values": float(ds[var]["values"].reduce(stat).values),
                 "day": str(ds[var]["day"].values),
             }
